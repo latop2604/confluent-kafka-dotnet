@@ -26,6 +26,7 @@ using System.Runtime.InteropServices;
 using Confluent.Kafka.Admin;
 using Confluent.Kafka.Internal;
 using System.Reflection;
+using System.Diagnostics.CodeAnalysis;
 #if NET462
 using System.ComponentModel;
 #endif
@@ -173,7 +174,7 @@ namespace Confluent.Kafka.Impl
             }
         }
 
-        static bool SetDelegates(Type nativeMethodsClass)
+        static bool SetDelegates([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type nativeMethodsClass)
         {
             var methods = nativeMethodsClass.GetRuntimeMethods().ToArray();
 
@@ -675,14 +676,17 @@ namespace Confluent.Kafka.Impl
 
 #endif
 
-        private static bool TrySetDelegates(List<Type> nativeMethodCandidateTypes)
+        private static bool TrySetDelegates(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type nativeMethodCandidateType1,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type nativeMethodCandidateType2 = null)
         {
-            foreach (var t in nativeMethodCandidateTypes)
+            if (SetDelegates(nativeMethodCandidateType1))
             {
-                if (SetDelegates(t))
-                {
-                    return true;
-                }
+                return true;
+            }
+            if (nativeMethodCandidateType2 != null && SetDelegates(nativeMethodCandidateType2))
+            {
+                return true;
             }
 
             throw new DllNotFoundException("Failed to load the librdkafka native library.");
@@ -700,7 +704,7 @@ namespace Confluent.Kafka.Impl
                 }
             }
 
-            TrySetDelegates(new List<Type> { typeof(NativeMethods.NativeMethods) });
+            TrySetDelegates(typeof(NativeMethods.NativeMethods));
         }
 
         private static void LoadOSXDelegates(string userSpecifiedPath)
@@ -713,7 +717,7 @@ namespace Confluent.Kafka.Impl
                 }
             }
 
-            TrySetDelegates(new List<Type> { typeof(NativeMethods.NativeMethods) });
+            TrySetDelegates(typeof(NativeMethods.NativeMethods));
         }
 
         private static void LoadLinuxDelegates(string userSpecifiedPath)
@@ -725,7 +729,7 @@ namespace Confluent.Kafka.Impl
                     throw new InvalidOperationException($"Failed to load librdkafka at location '{userSpecifiedPath}'. dlerror: '{PosixNative.LastError}'.");
                 }
 
-                TrySetDelegates(new List<Type> { typeof(NativeMethods.NativeMethods) });
+                TrySetDelegates(typeof(NativeMethods.NativeMethods));
             }
             else
             {
@@ -734,17 +738,14 @@ namespace Confluent.Kafka.Impl
                 var osName = PlatformApis.GetOSName();
                 if (osName.Equals("alpine", StringComparison.OrdinalIgnoreCase))
                 {
-                    delegates.Add(typeof(NativeMethods.NativeMethods_Alpine));
+                    TrySetDelegates(typeof(NativeMethods.NativeMethods_Alpine));
                 }
                 else
                 {
-                    // Try to load first the shared library with GSSAPI linkage 
-                    // and then the one without.
-                    delegates.Add(typeof(NativeMethods.NativeMethods));
-                    delegates.Add(typeof(NativeMethods.NativeMethods_Centos8));
+                    TrySetDelegates(
+                        typeof(NativeMethods.NativeMethods),
+                        typeof(NativeMethods.NativeMethods_Centos8));
                 }
-
-                TrySetDelegates(delegates);
             }
         }
 
